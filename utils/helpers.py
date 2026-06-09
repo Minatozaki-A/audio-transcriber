@@ -42,25 +42,15 @@ def convert_to_wav_16_mono() -> Path | None:
         str(new_name),
         ]
 
-    subprocess.run(command, check=True)
-    logging.info(f"Audio file {audio_file.name} - type {magic.from_file(audio_file, mime=True)}"
-                f" converted to {new_name} - type {magic.from_file(new_name, mime=True)}")
+    try:
+        subprocess.run(command, check=True)
+
+        logging.info(f"Audio file {audio_file.stem} - type {magic.from_file(audio_file, mime=True)}"
+                    f" converted to {new_name.stem} - type {magic.from_file(new_name, mime=True)}")
+
+        return new_name
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error converting audio file {audio_file.name}: {e}")
 
 
-
-def convert_video_to_wav_15_mono():
-    audio_file: Path = _get_audio_file_input_dir()
-    new_name: Path = _generate_name_audio_file()
-    command: list[str] = [
-        "ffmpeg",
-        "-y",
-        "-i", str(audio_file),
-        "-vn",
-        "-ac", "1",
-        "-ar", "16000",
-        "-sample_fmt", "s16",
-        str(new_name),
-    ]
-    subprocess.run(command, check=True)
-    logging.info(f"Audio file {audio_file.stem} - type {magic.from_file(audio_file, mime=True)}"
-                f" converted to {new_name.stem} - type {magic.from_file(new_name, mime=True)}")
