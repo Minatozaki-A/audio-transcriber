@@ -1,41 +1,36 @@
 import logging
 from pathlib import Path
-import datetime
-import string
-import random
 import subprocess
 import magic
+import uuid
 
 _INPUT_DIR: Path = Path(__file__).parent.parent / "input"
 _TEMP_DIR: Path = Path(__file__).parent.parent / "temp"
 
-logging.basicConfig(level=logging.INFO)
+
+def _find_audio_file() -> Path | None:
+    for file in _INPUT_DIR.iterdir():
+        if file.is_file():
+            return file
+    return None
+
+def generate_name_audio_file(path_dir: Path, label: str|None = None) -> Path:
+        unique_id: str = str(uuid.uuid4())[:6]
+
+        file_name: str = f"aud-{unique_id}"
+
+        if label:
+            file_name += f"-{label}"
+
+        return path_dir / f"{file_name}.wav"
 
 
-def _get_audio_file_input_dir() -> Path:
-    files: list[Path] = [f for f in _INPUT_DIR.iterdir() if f.is_file()]
-    if not files:
-        raise FileNotFoundError(f"No audio file found in {_INPUT_DIR}")
-    if len(files) > 1:
-        raise ValueError(f"Multiple files found in {_INPUT_DIR}: {[f.name for f in files]}")
-    return files[0]
+def convert_to_wav_16_mono() -> Path | None:
+    audio_file: Path = _find_audio_file()
+    if not audio_file:
+        return None
 
-
-def _generate_name_audio_file() -> Path:
-        creation_date: str = datetime.datetime.now().strftime("%Y%m%d")
-
-        subname_video: str = "".join([random.choice(string.ascii_lowercase + string.digits) for _ in range(6)])
-
-        new_name: str = f"aud-{creation_date}-{subname_video}.wav"
-        path_output: Path = _TEMP_DIR / new_name
-        if path_output.exists():
-            return _generate_name_audio_file()
-        return path_output
-
-
-def convert_to_wav_16_mono():
-    audio_file: Path = _get_audio_file_input_dir()
-    new_name: Path = _generate_name_audio_file()
+    new_name: Path = generate_name_audio_file(_TEMP_DIR)
     command: list[str] = [
         "ffmpeg",
         "-y",
