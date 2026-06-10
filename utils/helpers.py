@@ -8,25 +8,32 @@ _INPUT_DIR: Path = Path(__file__).parent.parent / "input"
 _TEMP_DIR: Path = Path(__file__).parent.parent / "temp"
 
 
-def _find_audio_file() -> Path | None:
+def find_audio_file() -> Path | None:
+    if not _INPUT_DIR.exists():
+        logging.warning(f"Input directory does not exist: {_INPUT_DIR}")
+        return None
+
     for file in _INPUT_DIR.iterdir():
-        if file.is_file():
+        if not file.is_file():
+            continue
+        mime = magic.from_file(file, mime=True)
+        if mime.startswith("audio/") or mime.startswith("video/"):
+            logging.info(f"Found audio file: {file} - type {mime}")
             return file
+
+    logging.warning("No audio file found in input directory")
     return None
 
-def generate_name_audio_file(path_dir: Path, label: str|None = None) -> Path:
-        unique_id: str = str(uuid.uuid4())[:6]
+def generate_name_audio_file(path_dir: Path) -> Path:
+        unique_id: str = str(uuid.uuid4())[:9]
 
         file_name: str = f"aud-{unique_id}"
-
-        if label:
-            file_name += f"-{label}"
 
         return path_dir / f"{file_name}.wav"
 
 
 def convert_to_wav_16_mono() -> Path | None:
-    audio_file: Path = _find_audio_file()
+    audio_file: Path | None = find_audio_file()
     if not audio_file:
         return None
 
