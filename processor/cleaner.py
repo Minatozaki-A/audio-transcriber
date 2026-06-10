@@ -14,7 +14,7 @@ def reduce_noise(path_file: Path) -> Path | None:
 
     reduced_noise = nr.reduce_noise(y=data, sr=rate, thresh_n_mult_nonstationary=2, stationary=False)
 
-    output_path: Path = generate_name_audio_file(_TEMP_DIR, "nr")
+    output_path: Path = generate_name_audio_file(_TEMP_DIR)
 
     try:
         sf.write(str(output_path), reduced_noise, rate)
