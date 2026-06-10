@@ -23,8 +23,15 @@ def reduce_noise(path_file: Path) -> Path | None:
     return output_path
 
 
-def coso_librosa(path_file: Path) -> None:
-    data, rate = librosa.load(path_file)
+def audio_normalize(path_file: Path) -> Path | None:
 
+    data, rate = librosa.load(path_file, sr=None)
+    audio = librosa.util.normalize(data, norm=1)
+    output_path: Path = generate_name_audio_file(_TEMP_DIR)
+    try:
+        sf.write(str(output_path), audio, rate)
+    except Exception as e:
+        logging.error(f"Error writing file {output_path}: {e}")
 
+    return output_path
 
