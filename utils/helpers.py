@@ -49,15 +49,17 @@ def remove_temp_files() -> None:
                 logging.info(f"Removed temporary file: {file.stem}")
             except FileNotFoundError:
                 logging.warning(f"File not found: {file.stem}")
-
-
+            except PermissionError:
+                logging.error(f"Permission denied to remove file: {file.stem}")
 
 
 def convert_to_wav_16_mono() -> Path | None:
     audio_file: Path | None = find_audio_file()
+    mime = magic.from_file(audio_file, mime=True)
+
     if not audio_file:
         return None
-    if audio_file.suffix.lower() == ".wav":
+    if mime.endswith("wav"):
         logging.info(f"Audio file {audio_file.stem} - type {magic.from_file(audio_file, mime=True)} already in WAV format")
         return audio_file
 
