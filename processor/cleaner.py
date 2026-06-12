@@ -24,10 +24,10 @@ def reduce_noise(path_file: Path) -> Path | None:
 
 
 def audio_normalize(path_file: Path) -> Path | None:
-
     data, rate = librosa.load(path_file, sr=None)
     audio = librosa.util.normalize(data, norm=1)
     output_path: Path = generate_name_audio_file(_TEMP_DIR)
+
     try:
         sf.write(str(output_path), audio, rate)
     except Exception as e:
