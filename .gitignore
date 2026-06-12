@@ -1,7 +1,6 @@
 .idea
 .venv
 input/
-output/
 temp/
 .env
 # Created by https://www.toptal.com/developers/gitignore/api/pycharm,python
