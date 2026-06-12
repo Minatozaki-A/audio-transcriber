@@ -1,7 +1,8 @@
 import logging
 import sys
-from utils.helpers import convert_to_wav_16_mono, remove_temp_files
-from processor.cleaner import reduce_noise
+from pathlib import Path
+from utils.helpers import convert_to_wav_16_mono, remove_temp_files, create_dirs
+from processor.cleaner import reduce_noise, audio_normalize
 from processor.transcriber import transcribe_audio
 
 
@@ -12,17 +13,24 @@ logging.basicConfig(
 
 
 def main() -> None:
+    create_dirs()
 
-
-    path_audio = convert_to_wav_16_mono()
+    path_audio: Path | None = convert_to_wav_16_mono()
     if not path_audio:
         logging.error("No audio file found or conversion failed.")
         sys.exit(1)
 
-    path_audio_nr = reduce_noise(path_audio)
+    path_audio_nr: Path | None = reduce_noise(path_audio)
     if not path_audio_nr:
         logging.error("Noise reduction failed.")
         sys.exit(1)
+
+    """    
+    path_audio_normalize: Path | None = audio_normalize(path_audio_nr)
+    if not path_audio_normalize:
+        logging.error("Audio normalization failed.")
+        sys.exit(1)
+    """
 
     transcribe_audio(path_audio_nr)
 
