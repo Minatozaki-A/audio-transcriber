@@ -7,6 +7,16 @@ import uuid
 _INPUT_DIR: Path = Path(__file__).parent.parent / "input"
 _TEMP_DIR: Path = Path(__file__).parent.parent / "temp"
 
+def create_dirs() -> None:
+    for dir_path in [_INPUT_DIR, _TEMP_DIR]:
+        try:
+            if not dir_path.exists():
+                dir_path.mkdir()
+                logging.info(f"Created directory: {dir_path}")
+            else:
+                logging.info(f"Directory exists: {dir_path}")
+        except PermissionError:
+            logging.error(f"Permission denied to create directory: {dir_path}")
 
 def find_audio_file() -> Path | None:
     if not _INPUT_DIR.exists():
