@@ -85,5 +85,3 @@ def convert_to_wav_16_mono() -> Path | None:
 
     except subprocess.CalledProcessError as e:
         logging.error(f"Error converting audio file {audio_file.name}: {e}")
-
-
