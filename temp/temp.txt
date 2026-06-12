@@ -1,2 +1,0 @@
-Este directorio almacena temporalmente los archivos WAV generados durante la conversión y el procesamiento del audio. Estos archivos se eliminan automáticamente al finalizar la transcripción.
-elimina este archivo antes de usar el script
