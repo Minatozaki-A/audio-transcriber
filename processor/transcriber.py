@@ -4,20 +4,21 @@ import logging
 from faster_whisper import WhisperModel
 from pathlib import Path
 
-_TEMP_DIR: Path = Path(__file__).parent.parent / "temp"
-_MODEL_SIZE: str = "small"
+_MODEL_SIZE: str = "small" # "medium" or "large-v3"
 
 def transcribe_audio(path_audio: Path) -> None:
+
     path_audio_nr = path_audio
+
     try:
-    # Run on GPU with FP16
-    # model = WhisperModel(_MODEL_SIZE, device="cuda", compute_type="float16")
-    # or run on GPU with INT8
-    # model = WhisperModel(_MODEL_SIZE, device="cuda", compute_type="int8_float16")
-    # or run on CPU with INT8
+        # Run on GPU with FP16
+        # model = WhisperModel(_MODEL_SIZE, device="cuda", compute_type="float16")
+
+        # or run on GPU with INT8
+        # model = WhisperModel(_MODEL_SIZE, device="cuda", compute_type="int8_float16")
+
+        # or run on CPU with INT8
         model = WhisperModel(_MODEL_SIZE, device="cpu", compute_type="int8")
-
-
 
         segments, info = model.transcribe(str(path_audio_nr), beam_size=5)
 
@@ -25,8 +26,10 @@ def transcribe_audio(path_audio: Path) -> None:
 
         for segment in segments:
             print("[%.2fs -> %.2fs] %s" % (segment.start, segment.end, segment.text))
+
     except Exception as e:
         logging.error(f"Error transcribing audio: {e}")
+
     finally:
         del model
         gc.collect()
