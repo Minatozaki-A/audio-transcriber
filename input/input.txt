@@ -1,2 +1,0 @@
-Este directorio almacena los archivos de audio o video originales que se desean transcribir.
-elimina este archivo y reemplaza con el archivo de audio o video que desees transcribir.
