@@ -1,9 +1,9 @@
 import logging
 import sys
 from pathlib import Path
-from utils.helpers import convert_to_wav_16_mono, remove_temp_files
+from utils.helpers import convert_to_wav_16_mono#, remove_temp_files
 from processor.cleaner import reduce_noise, audio_normalize
-from processor.transcriber import transcribe_audio
+from processor.transcriber import transcribe_audio, whisper_model
 
 
 logging.basicConfig(
