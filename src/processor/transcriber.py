@@ -1,6 +1,7 @@
 import gc
 import torch
 import logging
+from contextlib import contextmanager
 from faster_whisper import WhisperModel
 from pathlib import Path
 
@@ -30,6 +31,18 @@ def transcribe_audio(path_audio: Path) -> None:
     except Exception as e:
         logging.error(f"Error transcribing audio: {e}")
 
+    finally:
+        del model
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+
+@contextmanager
+def whisper_model(*args,**kwargs):
+    model = WhisperModel(*args, **kwargs)
+    try:
+        yield model
     finally:
         del model
         gc.collect()
