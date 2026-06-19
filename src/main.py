@@ -31,9 +31,14 @@ def main() -> None:
         sys.exit(1)
     """
 
-    transcribe_audio(path_audio_nr)
+    # transcribe_audio(path_audio_nr)
 
-    remove_temp_files()
+    with whisper_model("small",  device="cpu", compute_type="int8") as model:
+        segments, _ = model.transcribe(str(path_audio_nr), beam_size=5)
+        # result = " ".join(seg.text for seg in segments)
+        for segment in segments:
+            print("[%.2fs -> %.2fs] %s" % (segment.start, segment.end, segment.text))
+
 
 if __name__ == "__main__":
     main()
