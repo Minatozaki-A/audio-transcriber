@@ -31,7 +31,7 @@ def generate_name_audio_file(path_dir: Path) -> Path:
 
         return path_dir / f"{file_name}.wav"
 
-def remove_temp_files() -> None:
+"""def remove_temp_files() -> None:
     for file in _TEMP_DIR.iterdir():
         if file.is_file():
             try:
