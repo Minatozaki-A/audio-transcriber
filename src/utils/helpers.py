@@ -40,11 +40,12 @@ def generate_name_audio_file(path_dir: Path) -> Path:
             except FileNotFoundError:
                 logging.warning(f"File not found: {file.stem}")
             except PermissionError:
-                logging.error(f"Permission denied to remove file: {file.stem}")
+                logging.error(f"Permission denied to remove file: {file.stem}")"""
 
 
 def convert_to_wav_16_mono() -> Path | None:
     audio_file: Path | None = find_audio_file()
+
     mime = magic.from_file(audio_file, mime=True)
 
     if not audio_file:
