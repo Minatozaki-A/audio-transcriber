@@ -5,9 +5,9 @@ from contextlib import contextmanager
 from faster_whisper import WhisperModel
 from pathlib import Path
 
-_MODEL_SIZE: str = "small" # "medium" or "large-v3"
+# _MODEL_SIZE: str = "small" # "medium" or "large-v3"
 
-def transcribe_audio(path_audio: Path) -> None:
+"""def transcribe_audio(path_audio: Path) -> None:
 
     path_audio_nr = path_audio
 
@@ -36,16 +36,20 @@ def transcribe_audio(path_audio: Path) -> None:
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            torch.cuda.ipc_collect()
+            torch.cuda.ipc_collect()"""
 
 @contextmanager
 def whisper_model(*args,**kwargs):
     model = WhisperModel(*args, **kwargs)
     try:
+        logging.info("Model loaded successfully")
         yield model
     finally:
         del model
         gc.collect()
+        logging.info("Model garbage collected")
         if torch.cuda.is_available():
+            logging.info("CUDA memory before cleanup")
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
+            logging.info("CUDA memory cleanup")
