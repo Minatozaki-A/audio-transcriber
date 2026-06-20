@@ -67,13 +67,19 @@ def generate_name_audio_file(path_dir: Path) -> Path:
 def convert_to_wav_16_mono() -> Path | None:
     audio_file: Path | None = find_audio_file()
 
-    mime = magic.from_file(audio_file, mime=True)
-
     if not audio_file:
+        logging.error("file not found")
         return None
-    if mime.endswith("wav"):
-        logging.info(f"Audio file {audio_file.stem} - type {magic.from_file(audio_file, mime=True)} already in WAV format")
-        return audio_file
+
+    mime: str = magic.from_file(audio_file, mime=True)
+
+    """if mime in {"audio/wav", "audio/x-wav"}:
+        logging.info(f"Audio file {audio_file} - type {magic.from_file(audio_file, mime=True)} already in WAV format")
+        return audio_file"""
+
+    if not mime.startswith("audio/") or mime.startswith("video/"):
+        logging.error(f"Unsupported file type: %s", mime)
+        return None
 
     new_name: Path = generate_name_audio_file(_TEMP_DIR)
     command: list[str] = [
