@@ -26,6 +26,25 @@ def find_audio_file() -> Path | None:
     logging.warning("No audio file found in input directory")
     return None
 
+def select_audio_files() -> list[str]:
+    root = tk.Tk()
+    root.geometry("800x600")
+    root.withdraw()
+
+    file_paths: tuple[str, ...] = filedialog.askopenfilenames(
+        parent=root,
+        initialdir=str(Path.home()),
+        title="Select Audio Files",
+        filetypes=[("Audio Files", "*.*"),
+        ("Video", "*.*"),
+        ("Todos los archivos", "*.*"),
+        ],
+    )
+    root.destroy()
+# general copia de los archivos y un directorio en tmp
+    return [Path(file_path) for file_path in file_paths]
+
+
 def generate_name_audio_file(path_dir: Path) -> Path:
         unique_id: str = str(uuid.uuid4())[:9]
 
