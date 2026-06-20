@@ -94,14 +94,14 @@ def convert_to_wav_16_mono() -> Path | None:
         ]
 
     try:
-        subprocess.run(command, check=True)
+        sp.run(command, check=True)
 
-        logging.info(f"Audio file {audio_file.stem} - type {magic.from_file(audio_file, mime=True)}"
-                    f" converted to {new_name.stem} - type {magic.from_file(new_name, mime=True)}")
+        logging.info(f"Audio file {audio_file} | type {magic.from_file(audio_file, mime=True)}"
+                    f" converted to {new_name} | type {magic.from_file(new_name, mime=True)}")
 
         return new_name
 
-    except subprocess.CalledProcessError as e:
+    except sp.CalledProcessError as e:
         logging.error(f"Error converting audio file {audio_file.name}: {e}")
 
-
+select_audio_files()
