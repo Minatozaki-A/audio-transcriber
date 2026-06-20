@@ -31,7 +31,14 @@ def main() -> None:
         sys.exit(1)
     """
 
-    # transcribe_audio(path_audio_nr)
+    # Run on GPU with FP16
+    # whisper_model("medium", device="cuda", compute_type="float16")
+
+    # or run on GPU with INT8
+    # whisper_model("medium", device="cuda", compute_type="int8_float16")
+
+    # or run on CPU with INT8
+    # whisper_model("small", device="cpu", compute_type="int8")
 
     with whisper_model("small",  device="cpu", compute_type="int8") as model:
         segments, _ = model.transcribe(str(path_audio_nr), beam_size=5)
