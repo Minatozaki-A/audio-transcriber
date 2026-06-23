@@ -40,11 +40,12 @@ def main() -> None:
     # or run on CPU with INT8
     # whisper_model("small", device="cpu", compute_type="int8")
 
-    with whisper_model("small",  device="cpu", compute_type="int8") as model:
-        segments, _ = model.transcribe(str(path_audio_nr), beam_size=5)
-        # result = " ".join(seg.text for seg in segments)
-        for segment in segments:
-            print("[%.2fs -> %.2fs] %s" % (segment.start, segment.end, segment.text))
+    with whisper_model("small", device="cpu", compute_type="int8") as model:
+        for path_audio_nr in audio_files_nr:
+            logging.info("Transcribing: %s", path_audio_nr.name)
+            segments, _ = model.transcribe(str(path_audio_nr), beam_size=5)
+            for segment in segments:
+                print("[%.2fs -> %.2fs] %s" % (segment.start, segment.end, segment.text))
 
 
 if __name__ == "__main__":
