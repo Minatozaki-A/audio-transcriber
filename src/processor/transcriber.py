@@ -3,15 +3,8 @@ import torch
 import logging
 from contextlib import contextmanager
 from faster_whisper import WhisperModel
-from pathlib import Path
 
-# _MODEL_SIZE: str = "small" # "medium" or "large-v3"
-
-"""def transcribe_audio(path_audio: Path) -> None:
-
-    path_audio_nr = path_audio
-
-    try:
+"""
         # Run on GPU with FP16
         # model = WhisperModel(_MODEL_SIZE, device="cuda", compute_type="float16")
 
@@ -27,9 +20,6 @@ from pathlib import Path
 
         for segment in segments:
             print("[%.2fs -> %.2fs] %s" % (segment.start, segment.end, segment.text))
-
-    except Exception as e:
-        logging.error(f"Error transcribing audio: {e}")
 
     finally:
         del model
