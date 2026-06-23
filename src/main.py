@@ -14,22 +14,22 @@ logging.basicConfig(
 
 def main() -> None:
 
-    path_audio: Path | None = convert_to_wav_16_mono()
-    if not path_audio:
-        logging.error("No audio file found or conversion failed.")
+    audio_files: list[Path] = convert_to_wav_16_mono_v2()
+    if not audio_files:
+        logging.error("No audio files found or conversion failed.")
         sys.exit(1)
 
-    path_audio_nr: Path | None = reduce_noise(path_audio)
-    if not path_audio_nr:
-        logging.error("Noise reduction failed.")
-        sys.exit(1)
+    audio_files_nr: list[Path] = []
+    for af in audio_files:
+        path_audio_nr: Path | None = reduce_noise(af)
+        if not path_audio_nr:
+            logging.warning("Noise reduction failed for %s, skipping.", af.name)
+            continue
+        audio_files_nr.append(path_audio_nr)
 
-    """    
-    path_audio_normalize: Path | None = audio_normalize(path_audio_nr)
-    if not path_audio_normalize:
-        logging.error("Audio normalization failed.")
+    if not audio_files_nr:
+        logging.error("All noise reduction steps failed.")
         sys.exit(1)
-    """
 
     # Run on GPU with FP16
     # whisper_model("medium", device="cuda", compute_type="float16")
