@@ -10,6 +10,7 @@ import uuid
 _TEMP_DIR: Path = Path(tf.gettempdir())
 
 def select_audio_files() -> list[Path]:
+    """Open a native file dialog and return the selected audio/video paths."""
     root = tk.Tk()
     root.withdraw()
 
@@ -27,6 +28,7 @@ def select_audio_files() -> list[Path]:
 
 
 def _command_ffmpeg(audio_file: Path, output_file: Path):
+    """Build the ffmpeg argument list to convert any audio/video to 16 kHz mono WAV (s16)."""
     command: list[str] = [
         "ffmpeg",
         "-y",
@@ -40,6 +42,7 @@ def _command_ffmpeg(audio_file: Path, output_file: Path):
     return command
 
 def generate_name_audio_file() -> Path:
+        """Return a unique temp path of the form <tmpdir>/aud-<9-char-uuid>.wav."""
         unique_id: str = str(uuid.uuid4())[:9]
 
         file_name: str = f"aud-{unique_id}"
@@ -48,6 +51,7 @@ def generate_name_audio_file() -> Path:
 
 
 def convert_to_wav_16_mono_v2() -> list[Path]:
+    """Prompt the user to pick files, convert each to 16 kHz mono WAV, and return the resulting paths."""
     audio_files_converted: list[Path] = []
     audio_files: list[Path] = select_audio_files()
 
