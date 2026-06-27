@@ -29,7 +29,8 @@ from faster_whisper import WhisperModel
             torch.cuda.ipc_collect()"""
 
 @contextmanager
-def whisper_model(*args,**kwargs):
+def whisper_model(*args, **kwargs):
+    """Context manager that loads a WhisperModel and guarantees GPU/CPU memory is freed on exit."""
     model = WhisperModel(*args, **kwargs)
     try:
         logging.info("Model loaded successfully")
