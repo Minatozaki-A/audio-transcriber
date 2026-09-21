@@ -5,7 +5,7 @@ import ctranslate2 as ct2
 from contextlib import contextmanager
 from faster_whisper import WhisperModel
 
-"""
+
         # Run on GPU with FP16
         # model = WhisperModel(_MODEL_SIZE, device="cuda", compute_type="float16")
 
@@ -13,8 +13,8 @@ from faster_whisper import WhisperModel
         # model = WhisperModel(_MODEL_SIZE, device="cuda", compute_type="int8_float16")
 
         # or run on CPU with INT8
-        model = WhisperModel(_MODEL_SIZE, device="cpu", compute_type="int8")
-"""
+        #model = WhisperModel(_MODEL_SIZE, device="cpu", compute_type="int8")
+
 
 @contextmanager
 def whisper_model(
