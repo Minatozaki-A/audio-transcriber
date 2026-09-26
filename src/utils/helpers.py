@@ -39,7 +39,7 @@ def _is_target_wav_format_stdlib(file_path: Path) -> bool:
         return False
 
 
-def _unique_path(base_path: Path, max_attempts: int = 1000)-> Path:
+def _unique_path(base_path: Path, max_attempts: int = 1000) -> Path:
     """Genera una ruta única añadiendo un sufijo numérico para evitar colisiones.
 
     Returns:
@@ -48,23 +48,16 @@ def _unique_path(base_path: Path, max_attempts: int = 1000)-> Path:
     if not base_path.exists():
         return base_path
     stem, suffix = base_path.stem, base_path.suffix
-    for n in count(1, max_attempts + 1):
+    for n in range(1, max_attempts + 1):
         candidate: Path = base_path.parent / f"{stem}-({n}){suffix}"
         if not candidate.exists():
             return candidate
     raise RuntimeError(f"could not find unique path for {base_path} after {max_attempts} attempts")
 
 
-def create_temp_audio_path(temp_dir: Path) -> Path:
-    """Crea un archivo temporal único para audio."""
-    tmp = tf.NamedTemporaryFile(
-        suffix=".wav",
-        prefix="temp-file-audio-",
-        dir=temp_dir,
-        delete=False,  # importante: si no, se borra al cerrarse
-    )
-    tmp.close()  # cerramos el handle, pero el archivo queda en disco
-    return Path(tmp.name)
+def create_temp_audio_path(temp_dir: str) -> Path:
+    random_number = uuid.uuid4()
+    return Path(f"{temp_dir}/temp-{random_number}.wav")
 
 def create_name_trans_path() -> Path:
     new_name = f"trans-{date.today():%Y-%m-%d}.md"
