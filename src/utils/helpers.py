@@ -1,16 +1,13 @@
 import logging
-import tempfile as tf
 import wave
 import subprocess as sp
 import magic
+import uuid
 from datetime import date
 from pathlib import Path
-from itertools import count
+
 
 _ECHOBEAK_DIR: Path = Path.home() / "EchoBeak"
-_TEMP_DIR: Path = Path(tf.gettempdir())
-
-
 
 
 def _command_ffmpeg(audio_file: Path, output_file: Path):
