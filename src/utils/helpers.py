@@ -69,57 +69,63 @@ def create_name_trans_path() -> Path:
 
 
 
-def convert_to_wav_16_mono() -> list[Path]:
-    """Prompt the user to pick files, convert each to 16 kHz mono WAV, and return the resulting paths."""
-    audio_files_converted: list[Path] = []
-    # audio_files: list[Path] = select_audio_files()
-    audio_files: list[Path] = []
+def _split_wav_5_minutes(audio_file: Path, output_file: Path) -> list[Path]:
+    """Split a normalized WAV into consecutive five-minute files with ffmpeg."""
+    pattern = output_file.with_name(f"{output_file.stem}-part-%03d.wav")
+    sp.run(
+        ["ffmpeg", "-y", "-i", str(audio_file), "-af", "asetnsamples=n=16000:p=0", "-f", "segment",
+         "-segment_time", "300", "-reset_timestamps", "1", str(pattern)],
+        check=True,
+    )
+    return sorted(output_file.parent.glob(f"{output_file.stem}-part-*.wav"))
 
 
-    for af in audio_files:
+def convert_to_wav_16_mono(selected_audio_file: Path, temp_dir: str) -> list[Path]:
+    """Return a target WAV directly, or convert and split longer audio."""
+    try:
+        mime: str = magic.from_file(selected_audio_file, mime=True)
+    except OSError:
+        logging.error("Cannot read file %s", selected_audio_file.name)
+        return []
+    except magic.MagicException:
+        logging.exception("Cannot detect MIME type for file %s", selected_audio_file)
+        return []
+
+    if not (mime.startswith("audio/") or mime.startswith("video/")):
+        logging.error("Unsupported file type: %s (%s)", mime, selected_audio_file.name)
+        return []
+
+    already_target_wav = (
+        mime in {"audio/wav", "audio/x-wav"}
+        and _is_target_wav_format_stdlib(selected_audio_file)
+    )
+    output_file = create_temp_audio_path(temp_dir)
+    try:
+        audio_file = selected_audio_file if already_target_wav else output_file
+        if not already_target_wav:
+            sp.run(_command_ffmpeg(selected_audio_file, output_file), check=True)
+
+        with wave.open(str(audio_file), "rb") as wf:
+            duration_seconds = wf.getnframes() / wf.getframerate()
+        if duration_seconds <= 300:
+            return [audio_file]
+
         try:
-            mime: str = magic.from_file(af, mime=True)
-        except OSError:
-            logging.error("Cannot read file %s", af.name)
-            continue
+            parts = _split_wav_5_minutes(audio_file, output_file)
+            if not parts:
+                raise OSError("ffmpeg did not create any audio segments")
+            return parts
+        finally:
+            output_file.unlink(missing_ok=True)
+    except sp.CalledProcessError as e:
+        logging.error("Error processing audio file %s: %s", selected_audio_file.name, e)
+    except FileNotFoundError:
+        logging.error("ffmpeg not found in PATH — aborting conversion")
+        raise
+    except (OSError, wave.Error) as e:
+        logging.error("I/O error processing %s: %s", selected_audio_file.name, e)
 
-
-        except magic.MagicException:
-            logging.exception("Cannot detect MIME type for file %s", af)
-            continue
-
-        if not (mime.startswith("audio/") or mime.startswith("video/")):
-            logging.error("Unsupported file type: %s (%s)", mime, af.name)
-            continue
-
-
-        if mime in {"audio/wav", "audio/x-wav"}:
-            if _is_target_wav_format_stdlib(af):
-                logging.info("File %s already in target WAV format, skipping conversion", af.name)
-                audio_files_converted.append(af)
-                continue
-            logging.info("File %s is WAV but not target format, converting", af.name)
-
-
-        new_name: Path = create_temp_audio_path()
-
-        try:
-            sp.run(_command_ffmpeg(af, new_name), check=True)
-            logging.info("%s converted into %s", af.name, new_name.name)
-
-        except sp.CalledProcessError as e:
-            logging.error("Error converting audio file %s: %s", af.name, e)
-            continue
-
-        except FileNotFoundError:
-            logging.error("ffmpeg not found in PATH — aborting conversion")
-            raise
-
-        except OSError as e:
-            logging.error("I/O error converting %s: %s", af.name, e)
-            continue
-
-        logging.info("Audio file %s | type %s | converted to %s", af, mime, new_name.name)
-        audio_files_converted.append(new_name)
-
-    return audio_files_converted
+    output_file.unlink(missing_ok=True)
+    for part in output_file.parent.glob(f"{output_file.stem}-part-*.wav"):
+        part.unlink(missing_ok=True)
+    return []
