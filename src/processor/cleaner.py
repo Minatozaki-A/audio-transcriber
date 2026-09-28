@@ -2,17 +2,12 @@ import noisereduce as nr
 import soundfile as sf
 # import librosa
 import logging
-import tempfile as tf
 from pathlib import Path
 from utils.helpers import create_temp_audio_path
 
 
-
-_TEMP_DIR: Path = Path(tf.gettempdir())
-
-
-def reduce_noise(path_file: Path) -> Path | None:
-    output_path: Path = create_temp_audio_path(_TEMP_DIR)
+def reduce_noise(path_file: Path, tempd:str) -> Path | None:
+    output_path: Path = create_temp_audio_path(tempd)
 
     try:
         data, rate = sf.read(path_file, dtype="float32")
@@ -37,8 +32,12 @@ def reduce_noise(path_file: Path) -> Path | None:
 
     try:
         sf.write(str(output_path), reduced_noise, rate)
-    except (sf.SoundFileError, OSError, PermissionError) as e:
-        logging.error("Error writing file %s: %s", path_file, e)
+    except (sf.SoundFileError, OSError) as e:
+        logging.error("Error writing file %s: %s", output_path, e)
+        try:
+            output_path.unlink(missing_ok=True)
+        except OSError as cleanup_error:
+            logging.error("Cannot remove partial file %s: %s", output_path, cleanup_error)
         return None
 
     return output_path
