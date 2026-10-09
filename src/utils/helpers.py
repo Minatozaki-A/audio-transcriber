@@ -3,14 +3,17 @@ import wave
 import subprocess as sp
 import magic
 import uuid
+import shutil
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from errors import AudioConversionError
 
 
 _ECHOBEAK_DIR: Path = Path.home() / "EchoBeak"
 
 
-def _command_ffmpeg(audio_file: Path, output_file: Path):
+def _command_ffmpeg(audio_file: Path, output_file: Path) -> list[str]:
     """Build the ffmpeg argument list to convert any audio/video to 16 kHz mono WAV (s16)."""
     command: list[str] = [
         "ffmpeg",
@@ -23,6 +26,7 @@ def _command_ffmpeg(audio_file: Path, output_file: Path):
         str(output_file),
         ]
     return command
+
 
 def _is_target_wav_format_stdlib(file_path: Path) -> bool:
     try:
@@ -40,11 +44,7 @@ def _is_target_wav_format_stdlib(file_path: Path) -> bool:
 
 
 def _unique_path(base_path: Path, max_attempts: int = 1000) -> Path:
-    """Genera una ruta única añadiendo un sufijo numérico para evitar colisiones.
-
-    Returns:
-        Path | None: La ruta única si se encuentra,
-    """
+    """Find an unused path by adding a numeric suffix; does not reserve it."""
     if not base_path.exists():
         return base_path
     stem, suffix = base_path.stem, base_path.suffix
@@ -55,12 +55,23 @@ def _unique_path(base_path: Path, max_attempts: int = 1000) -> Path:
     raise RuntimeError(f"could not find unique path for {base_path} after {max_attempts} attempts")
 
 
-def create_temp_audio_path(temp_dir: str) -> Path:
+def create_temp_audio_path(temp_dir: Path | str) -> Path:
     random_number = uuid.uuid4()
-    return Path(f"{temp_dir}/temp-{random_number}.wav")
+    return Path(temp_dir) / f"temp-{random_number}.wav"
 
-def create_name_trans_path() -> Path:
-    new_name = f"trans-{date.today():%Y-%m-%d}.md"
+
+def validate_transcript_name(name: str) -> None:
+    if (not name or name.removesuffix(".md") in {"", ".", ".."}
+            or "/" in name or "\\" in name):
+        raise ValueError("Transcript name must be a file name, not a path")
+
+
+def create_name_trans_path(name: str | None = None) -> Path:
+    if name is None:
+        new_name = f"trans-{date.today():%Y-%m-%d}.md"
+    else:
+        validate_transcript_name(name)
+        new_name = f"{name.removesuffix('.md')}.md"
 
     _ECHOBEAK_DIR.mkdir(parents=True, exist_ok=True)
     final_name: Path = _ECHOBEAK_DIR / new_name
@@ -69,31 +80,82 @@ def create_name_trans_path() -> Path:
 
 
 
+def run_ffmpeg(command: list[str]) -> None:
+    try:
+        sp.run(command, check=True, capture_output=True, text=True)
+    except FileNotFoundError as error:
+        raise AudioConversionError("ffmpeg not found in PATH") from error
+    except sp.CalledProcessError as error:
+        detail = (error.stderr or "").strip()
+        raise AudioConversionError(f"ffmpeg failed: {detail or error}") from error
+    except OSError as error:
+        raise AudioConversionError(f"Cannot execute ffmpeg: {error}") from error
+
+
+@dataclass(frozen=True)
+class AudioChunk:
+    path: Path
+    offset_seconds: float
+
+
+def build_audio_chunks(paths: list[Path]) -> list[AudioChunk]:
+    if not paths:
+        raise AudioConversionError("No audio chunks were produced")
+    chunks: list[AudioChunk] = []
+    offset = 0.0
+    for path in paths:
+        try:
+            with wave.open(str(path), "rb") as audio:
+                duration = audio.getnframes() / audio.getframerate()
+        except (OSError, wave.Error, EOFError) as error:
+            raise AudioConversionError(f"Cannot read audio chunk {path}: {error}") from error
+        if duration <= 0:
+            raise AudioConversionError(f"Empty audio chunk: {path}")
+        chunks.append(AudioChunk(path, offset))
+        offset += duration
+    return chunks
+
+
+def publish_transcript(draft_path: Path, output_path: Path) -> Path:
+    """Copy a completed draft without overwriting existing transcripts."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    while True:
+        candidate = _unique_path(output_path)
+        try:
+            destination = candidate.open("x", encoding="utf-8")
+        except FileExistsError:
+            continue
+        try:
+            with destination, draft_path.open("r", encoding="utf-8") as source:
+                shutil.copyfileobj(source, destination)
+        except BaseException as error:
+            try:
+                candidate.unlink(missing_ok=True)
+            except OSError as cleanup_error:
+                error.add_note(f"Cannot remove partial transcript {candidate}: {cleanup_error}")
+            raise
+        return candidate
+
+
 def _split_wav_5_minutes(audio_file: Path, output_file: Path) -> list[Path]:
     """Split a normalized WAV into consecutive five-minute files with ffmpeg."""
     pattern = output_file.with_name(f"{output_file.stem}-part-%03d.wav")
-    sp.run(
+    run_ffmpeg(
         ["ffmpeg", "-y", "-i", str(audio_file), "-af", "asetnsamples=n=16000:p=0", "-f", "segment",
          "-segment_time", "300", "-reset_timestamps", "1", str(pattern)],
-        check=True,
     )
     return sorted(output_file.parent.glob(f"{output_file.stem}-part-*.wav"))
 
 
-def convert_to_wav_16_mono(selected_audio_file: Path, temp_dir: str) -> list[Path]:
+def convert_to_wav_16_mono(selected_audio_file: Path, temp_dir: Path | str) -> list[Path]:
     """Return a target WAV directly, or convert and split longer audio."""
     try:
         mime: str = magic.from_file(selected_audio_file, mime=True)
-    except OSError:
-        logging.error("Cannot read file %s", selected_audio_file.name)
-        return []
-    except magic.MagicException:
-        logging.exception("Cannot detect MIME type for file %s", selected_audio_file)
-        return []
+    except (OSError, magic.MagicException) as error:
+        raise AudioConversionError(f"Cannot detect MIME type for {selected_audio_file}: {error}") from error
 
     if not (mime.startswith("audio/") or mime.startswith("video/")):
-        logging.error("Unsupported file type: %s (%s)", mime, selected_audio_file.name)
-        return []
+        raise AudioConversionError(f"Unsupported file type: {mime} ({selected_audio_file})")
 
     already_target_wav = (
         mime in {"audio/wav", "audio/x-wav"}
@@ -103,29 +165,25 @@ def convert_to_wav_16_mono(selected_audio_file: Path, temp_dir: str) -> list[Pat
     try:
         audio_file = selected_audio_file if already_target_wav else output_file
         if not already_target_wav:
-            sp.run(_command_ffmpeg(selected_audio_file, output_file), check=True)
+            run_ffmpeg(_command_ffmpeg(selected_audio_file, output_file))
 
         with wave.open(str(audio_file), "rb") as wf:
             duration_seconds = wf.getnframes() / wf.getframerate()
+        if duration_seconds <= 0:
+            raise AudioConversionError(f"Empty audio file: {selected_audio_file}")
         if duration_seconds <= 300:
             return [audio_file]
 
+        parts = _split_wav_5_minutes(audio_file, output_file)
+        if not parts:
+            raise OSError("ffmpeg did not create any audio segments")
+        output_file.unlink(missing_ok=True)
+        return parts
+    except (AudioConversionError, OSError, wave.Error, EOFError) as error:
         try:
-            parts = _split_wav_5_minutes(audio_file, output_file)
-            if not parts:
-                raise OSError("ffmpeg did not create any audio segments")
-            return parts
-        finally:
             output_file.unlink(missing_ok=True)
-    except sp.CalledProcessError as e:
-        logging.error("Error processing audio file %s: %s", selected_audio_file.name, e)
-    except FileNotFoundError:
-        logging.error("ffmpeg not found in PATH — aborting conversion")
-        raise
-    except (OSError, wave.Error) as e:
-        logging.error("I/O error processing %s: %s", selected_audio_file.name, e)
-
-    output_file.unlink(missing_ok=True)
-    for part in output_file.parent.glob(f"{output_file.stem}-part-*.wav"):
-        part.unlink(missing_ok=True)
-    return []
+            for part in output_file.parent.glob(f"{output_file.stem}-part-*.wav"):
+                part.unlink(missing_ok=True)
+        except OSError as cleanup_error:
+            error.add_note(f"Cannot remove temporary audio: {cleanup_error}")
+        raise AudioConversionError(f"Cannot process audio {selected_audio_file}: {error}") from error
