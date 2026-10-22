@@ -10,7 +10,7 @@ from pathlib import Path
 from errors import AudioConversionError
 
 
-_ECHOBEAK_DIR: Path = Path.home() / "EchoBeak"
+_ECHOBEAK_DIR: Path = Path.home() / "EchoBeak-Transcription"
 
 
 def _command_ffmpeg(audio_file: Path, output_file: Path) -> list[str]:
@@ -137,12 +137,12 @@ def publish_transcript(draft_path: Path, output_path: Path) -> Path:
         return candidate
 
 
-def _split_wav_5_minutes(audio_file: Path, output_file: Path) -> list[Path]:
-    """Split a normalized WAV into consecutive five-minute files with ffmpeg."""
+def _split_wav_20_minutes(audio_file: Path, output_file: Path) -> list[Path]:
+    """Split a normalized WAV into consecutive twenty-minute files with ffmpeg."""
     pattern = output_file.with_name(f"{output_file.stem}-part-%03d.wav")
     run_ffmpeg(
         ["ffmpeg", "-y", "-i", str(audio_file), "-af", "asetnsamples=n=16000:p=0", "-f", "segment",
-         "-segment_time", "300", "-reset_timestamps", "1", str(pattern)],
+         "-segment_time", "1200", "-reset_timestamps", "1", str(pattern)],
     )
     return sorted(output_file.parent.glob(f"{output_file.stem}-part-*.wav"))
 
@@ -171,10 +171,10 @@ def convert_to_wav_16_mono(selected_audio_file: Path, temp_dir: Path | str) -> l
             duration_seconds = wf.getnframes() / wf.getframerate()
         if duration_seconds <= 0:
             raise AudioConversionError(f"Empty audio file: {selected_audio_file}")
-        if duration_seconds <= 300:
+        if duration_seconds <= 1200:
             return [audio_file]
 
-        parts = _split_wav_5_minutes(audio_file, output_file)
+        parts = _split_wav_20_minutes(audio_file, output_file)
         if not parts:
             raise OSError("ffmpeg did not create any audio segments")
         output_file.unlink(missing_ok=True)
