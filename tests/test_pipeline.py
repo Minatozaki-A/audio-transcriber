@@ -6,7 +6,8 @@ import pytest
 
 import main as pipeline
 from errors import NoiseReductionError, TranscriptionError
-from utils import helpers
+from processor import transcriber
+from utils import paths as output_paths
 
 
 def test_pipeline_accumulates_timestamps_and_preserves_text(tmp_path, make_wav, monkeypatch):
@@ -18,7 +19,7 @@ def test_pipeline_accumulates_timestamps_and_preserves_text(tmp_path, make_wav, 
         return [make_wav(directory / "a.wav", 2.25), make_wav(directory / "b.wav", 1)]
 
     monkeypatch.setattr(pipeline, "convert_to_wav_16_mono", convert)
-    monkeypatch.setattr(pipeline, "reduce_noise", lambda path, directory: path)
+    monkeypatch.setattr(transcriber, "reduce_noise", lambda path, directory: path)
     model = Mock()
     model.supported_languages = ["es", "en", "ja"]
     model.transcribe.side_effect = [
@@ -84,10 +85,10 @@ def test_pipeline_failures_preserve_cause_and_cleanup(
             closed.append(True)
 
     monkeypatch.setattr(pipeline, "convert_to_wav_16_mono", convert)
-    monkeypatch.setattr(pipeline, "reduce_noise", clean)
+    monkeypatch.setattr(transcriber, "reduce_noise", clean)
     monkeypatch.setattr(pipeline, "load_whisper_model", load_model)
     saved_audio = tmp_path / "EchoBeak-Transcription"
-    monkeypatch.setattr(helpers, "_ECHOBEAK_DIR", saved_audio)
+    monkeypatch.setattr(output_paths, "_ECHOBEAK_DIR", saved_audio)
     expected = NoiseReductionError if stage == "clean" else TranscriptionError
     with pytest.raises(expected) as caught:
         pipeline.transcribe_file(source, output, noise_reduce=True, keep_wave=keep_wave)
@@ -156,7 +157,7 @@ def test_draft_write_failure_closes_model_and_keeps_io_error(tmp_path, make_wav,
             closed.append(True)
 
     monkeypatch.setattr(pipeline, "convert_to_wav_16_mono", lambda *args, **kwargs: [source])
-    monkeypatch.setattr(pipeline, "reduce_noise", lambda path, directory: path)
+    monkeypatch.setattr(transcriber, "reduce_noise", lambda path, directory: path)
     monkeypatch.setattr(pipeline, "load_whisper_model", load_model)
     monkeypatch.setattr(Path, "open", open_file)
     with pytest.raises(OSError) as caught:
@@ -212,10 +213,10 @@ def test_processed_chunks_follow_retention_option(
         assert all(path.exists() == keep_wave for path in paths + cleaned)
 
     monkeypatch.setattr(pipeline, "convert_to_wav_16_mono", convert)
-    monkeypatch.setattr(pipeline, "reduce_noise", cleaner)
+    monkeypatch.setattr(transcriber, "reduce_noise", cleaner)
     monkeypatch.setattr(pipeline, "load_whisper_model", load_model)
     saved_audio = tmp_path / "EchoBeak-Transcription"
-    monkeypatch.setattr(helpers, "_ECHOBEAK_DIR", saved_audio)
+    monkeypatch.setattr(output_paths, "_ECHOBEAK_DIR", saved_audio)
     pipeline.transcribe_file(
         source, tmp_path / "out.md", noise_reduce=noise_reduce, keep_wave=keep_wave
     )
@@ -235,7 +236,7 @@ def test_target_source_stays_in_place_with_audio_retention(
     source = make_wav(tmp_path / "source.wav")
     original = source.read_bytes()
     saved_audio = tmp_path / "EchoBeak-Transcription"
-    monkeypatch.setattr(helpers, "_ECHOBEAK_DIR", saved_audio)
+    monkeypatch.setattr(output_paths, "_ECHOBEAK_DIR", saved_audio)
     cleaned = []
 
     def clean(path, directory):
@@ -253,7 +254,7 @@ def test_target_source_stays_in_place_with_audio_retention(
         yield model
 
     monkeypatch.setattr(pipeline, "load_whisper_model", load_model)
-    monkeypatch.setattr(pipeline, "reduce_noise", clean)
+    monkeypatch.setattr(transcriber, "reduce_noise", clean)
     pipeline.transcribe_file(
         source, tmp_path / "out.md", noise_reduce=True, keep_wave=keep_wave
     )
@@ -298,7 +299,7 @@ def test_invalid_language_stops_before_audio_processing(
     cleaner = Mock()
     monkeypatch.setattr(pipeline, "load_whisper_model", load_model)
     monkeypatch.setattr(pipeline, "convert_to_wav_16_mono", convert)
-    monkeypatch.setattr(pipeline, "reduce_noise", cleaner)
+    monkeypatch.setattr(transcriber, "reduce_noise", cleaner)
     monkeypatch.setattr(pipeline, "create_name_trans_path", lambda name: output)
     assert pipeline.main([str(source), "out", "--language", language, "--noise-reduce"]) == 1
     convert.assert_not_called()

@@ -4,7 +4,7 @@ import noisereduce as nr
 import soundfile as sf
 
 from errors import NoiseReductionError
-from utils.helpers import create_temp_audio_path
+from utils.paths import create_temp_audio_path
 
 
 def reduce_noise(path_file: Path, temp_dir: Path | str) -> Path:

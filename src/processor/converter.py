@@ -1,16 +1,14 @@
+"""Audio/video validation, WAV conversion, and twenty-minute splitting."""
+
 import logging
-import wave
 import subprocess as sp
-import magic
-import uuid
-import shutil
-from dataclasses import dataclass
-from datetime import date
+import wave
 from pathlib import Path
+
+import magic
+
 from errors import AudioConversionError
-
-
-_ECHOBEAK_DIR: Path = Path.home() / "EchoBeak-Transcription"
+from utils.paths import create_temp_audio_path
 
 
 def _command_ffmpeg(audio_file: Path, output_file: Path) -> list[str]:
@@ -43,47 +41,6 @@ def _is_target_wav_format_stdlib(file_path: Path) -> bool:
         return False
 
 
-def _unique_path(base_path: Path, max_attempts: int = 1000) -> Path:
-    """Find an unused path by adding a numeric suffix; does not reserve it."""
-    if not base_path.exists():
-        return base_path
-    stem, suffix = base_path.stem, base_path.suffix
-    for n in range(1, max_attempts + 1):
-        candidate: Path = base_path.parent / f"{stem}-({n}){suffix}"
-        if not candidate.exists():
-            return candidate
-    raise RuntimeError(f"could not find unique path for {base_path} after {max_attempts} attempts")
-
-
-def create_temp_audio_path(temp_dir: Path | str) -> Path:
-    random_number = uuid.uuid4()
-    return Path(temp_dir) / f"temp-{random_number}.wav"
-
-
-def validate_transcript_name(name: str) -> None:
-    if (not name or name.removesuffix(".md") in {"", ".", ".."}
-            or "/" in name or "\\" in name):
-        raise ValueError("Transcript name must be a file name, not a path")
-
-
-def get_output_directory() -> Path:
-    _ECHOBEAK_DIR.mkdir(parents=True, exist_ok=True)
-    return _ECHOBEAK_DIR
-
-
-def create_name_trans_path(name: str | None = None) -> Path:
-    if name is None:
-        new_name = f"trans-{date.today():%Y-%m-%d}.md"
-    else:
-        validate_transcript_name(name)
-        new_name = f"{name.removesuffix('.md')}.md"
-
-    final_name: Path = get_output_directory() / new_name
-
-    return _unique_path(final_name)
-
-
-
 def run_ffmpeg(command: list[str]) -> None:
     try:
         sp.run(command, check=True, capture_output=True, text=True)
@@ -94,51 +51,6 @@ def run_ffmpeg(command: list[str]) -> None:
         raise AudioConversionError(f"ffmpeg failed: {detail or error}") from error
     except OSError as error:
         raise AudioConversionError(f"Cannot execute ffmpeg: {error}") from error
-
-
-@dataclass(frozen=True)
-class AudioChunk:
-    path: Path
-    offset_seconds: float
-
-
-def build_audio_chunks(paths: list[Path]) -> list[AudioChunk]:
-    if not paths:
-        raise AudioConversionError("No audio chunks were produced")
-    chunks: list[AudioChunk] = []
-    offset = 0.0
-    for path in paths:
-        try:
-            with wave.open(str(path), "rb") as audio:
-                duration = audio.getnframes() / audio.getframerate()
-        except (OSError, wave.Error, EOFError) as error:
-            raise AudioConversionError(f"Cannot read audio chunk {path}: {error}") from error
-        if duration <= 0:
-            raise AudioConversionError(f"Empty audio chunk: {path}")
-        chunks.append(AudioChunk(path, offset))
-        offset += duration
-    return chunks
-
-
-def publish_transcript(draft_path: Path, output_path: Path) -> Path:
-    """Copy a completed draft without overwriting existing transcripts."""
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    while True:
-        candidate = _unique_path(output_path)
-        try:
-            destination = candidate.open("x", encoding="utf-8")
-        except FileExistsError:
-            continue
-        try:
-            with destination, draft_path.open("r", encoding="utf-8") as source:
-                shutil.copyfileobj(source, destination)
-        except BaseException as error:
-            try:
-                candidate.unlink(missing_ok=True)
-            except OSError as cleanup_error:
-                error.add_note(f"Cannot remove partial transcript {candidate}: {cleanup_error}")
-            raise
-        return candidate
 
 
 def _split_wav_20_minutes(audio_file: Path, output_file: Path) -> list[Path]:

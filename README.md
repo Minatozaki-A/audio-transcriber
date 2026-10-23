@@ -104,19 +104,28 @@ audio-transcriber/
 │   ├── cli/                    # empty
 │   ├── errors.py               # Conversion, noise-reduction, and transcription errors
 │   ├── main.py                 # CLI and pipeline
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── model.py            # Model lifetime, model selection, GPU loading fallback
+│   │   └── runtime.py          # CUDA detection and memory cleanup
 │   ├── processor/
+│   │   ├── chunks.py           # Audio chunks and cumulative timestamp offsets
 │   │   ├── cleaner.py          # Non-stationary noise reduction
-│   │   ├── model.py            # empty
-│   │   ├── runtime.py          # empty
-│   │   └── transcriber.py      # Model load, GPU fallback, CUDA cleanup
+│   │   ├── converter.py        # MIME check, ffmpeg conversion, twenty-minute splitting
+│   │   └── transcriber.py      # Chunk transcription, timestamps, processed audio cleanup
 │   └── utils/
-│       └── helpers.py          # MIME check, ffmpeg conversion, splitting, transcript paths
+│       ├── paths.py            # Generated WAV paths and shared output directory
+│       └── transcripts.py      # Transcript names, collisions, and publication
 ├── tests/
 │   ├── conftest.py
+│   ├── test_chunks.py
 │   ├── test_cleaner.py
-│   ├── test_helpers.py
+│   ├── test_converter.py
+│   ├── test_model.py
 │   ├── test_pipeline.py
-│   └── test_transcriber.py
+│   ├── test_runtime.py
+│   ├── test_transcriber.py
+│   └── test_transcripts.py
 ├── pyproject.toml
 ├── uv.lock
 ├── LICENSE
@@ -125,7 +134,7 @@ audio-transcriber/
 
 ## Model selection
 
-`load_whisper_model()` chooses the model at runtime:
+`load_whisper_model()` in `src/models/model.py` chooses the model at runtime:
 
 - When CTranslate2 reports a CUDA device, it loads `medium` on `cuda` with `float16`.
 - When that load fails, when no CUDA device is present, or when the device check itself fails, it loads `small` on `cpu` with `int8`.

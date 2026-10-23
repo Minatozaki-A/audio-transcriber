@@ -1,93 +1,46 @@
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
 from processor import transcriber
+from processor.chunks import AudioChunk
 
 
-def test_load_whisper_model_uses_cpu_without_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
-    model = object()
-    create_model = Mock(return_value=model)
-    empty_cache = Mock()
-    ipc_collect = Mock()
-    monkeypatch.setattr(transcriber.ct2, "get_cuda_device_count", lambda: 0)
-    monkeypatch.setattr(transcriber, "WhisperModel", create_model)
-    monkeypatch.setattr(transcriber.torch.cuda, "is_available", lambda: False)
-    monkeypatch.setattr(transcriber.torch.cuda, "empty_cache", empty_cache)
-    monkeypatch.setattr(transcriber.torch.cuda, "ipc_collect", ipc_collect)
-
-    with transcriber.load_whisper_model() as loaded:
-        assert loaded is model
-
-    create_model.assert_called_once_with("small", device="cpu", compute_type="int8")
-    empty_cache.assert_not_called()
-    ipc_collect.assert_not_called()
-
-
-def test_load_whisper_model_uses_gpu_and_cleans_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
-    model = object()
-    create_model = Mock(return_value=model)
-    empty_cache = Mock()
-    ipc_collect = Mock()
-    monkeypatch.setattr(transcriber.ct2, "get_cuda_device_count", lambda: 1)
-    monkeypatch.setattr(transcriber, "WhisperModel", create_model)
-    monkeypatch.setattr(transcriber.torch.cuda, "is_available", lambda: True)
-    monkeypatch.setattr(transcriber.torch.cuda, "empty_cache", empty_cache)
-    monkeypatch.setattr(transcriber.torch.cuda, "ipc_collect", ipc_collect)
-
-    with transcriber.load_whisper_model() as loaded:
-        assert loaded is model
-
-    create_model.assert_called_once_with("medium", device="cuda", compute_type="float16")
-    empty_cache.assert_called_once_with()
-    ipc_collect.assert_called_once_with()
-
-
-@pytest.mark.parametrize("gpu_error", [RuntimeError("CUDA failed"), ValueError("unsupported FP16")])
-def test_gpu_load_failure_falls_back_to_cpu(
-    monkeypatch: pytest.MonkeyPatch, gpu_error: Exception
+@pytest.mark.parametrize("keep_wave", [False, True])
+@pytest.mark.parametrize("temporary_input", [False, True])
+def test_closing_transcript_lines_respects_audio_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    keep_wave: bool, temporary_input: bool,
 ) -> None:
-    cpu_model = object()
+    audio_dir = tmp_path / "audio"
+    audio_dir.mkdir()
+    source = (audio_dir if temporary_input else tmp_path) / "source.wav"
+    source.write_bytes(b"source")
+    cleaned = audio_dir / "cleaned.wav"
+    cleaned.write_bytes(b"cleaned")
+    monkeypatch.setattr(transcriber, "reduce_noise", lambda *args: cleaned)
+    model = Mock()
+    model.transcribe.return_value = (
+        iter([
+            SimpleNamespace(start=0.5, end=1.0, text=" canción"),
+            SimpleNamespace(start=1.0, end=2.0, text=" sin consumir"),
+        ]),
+        None,
+    )
 
-    def create_model(size: str, *, device: str, compute_type: str) -> object:
-        if device == "cuda":
-            raise gpu_error
-        assert (size, device, compute_type) == ("small", "cpu", "int8")
-        return cpu_model
+    lines = transcriber.transcript_lines(
+        model, [AudioChunk(source, 300.0)], audio_dir, None,
+        noise_reduce=True, keep_wave=keep_wave,
+    )
+    try:
+        assert next(lines) == "[300.50s -> 301.00s]  canción\n"
+        assert source.is_file()
+        assert cleaned.is_file()
+    finally:
+        lines.close()
 
-    create = Mock(side_effect=create_model)
-    monkeypatch.setattr(transcriber.ct2, "get_cuda_device_count", lambda: 1)
-    monkeypatch.setattr(transcriber, "WhisperModel", create)
-    monkeypatch.setattr(transcriber.torch.cuda, "is_available", lambda: False)
-
-    with transcriber.load_whisper_model() as loaded:
-        assert loaded is cpu_model
-
-    assert create.call_count == 2
-
-
-def test_cuda_detection_failure_uses_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
-    def detection_error() -> int:
-        raise RuntimeError("CUDA driver unavailable")
-
-    create_model = Mock(return_value=object())
-    monkeypatch.setattr(transcriber.ct2, "get_cuda_device_count", detection_error)
-    monkeypatch.setattr(transcriber, "WhisperModel", create_model)
-
-    with transcriber.load_whisper_model():
-        pass
-
-    create_model.assert_called_once_with("small", device="cpu", compute_type="int8")
-
-
-def test_gpu_usage_error_does_not_start_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
-    create_model = Mock(return_value=object())
-    monkeypatch.setattr(transcriber.ct2, "get_cuda_device_count", lambda: 1)
-    monkeypatch.setattr(transcriber, "WhisperModel", create_model)
-    monkeypatch.setattr(transcriber.torch.cuda, "is_available", lambda: False)
-
-    with pytest.raises(RuntimeError, match="transcription failed"):
-        with transcriber.load_whisper_model():
-            raise RuntimeError("transcription failed")
-
-    create_model.assert_called_once_with("medium", device="cuda", compute_type="float16")
+    assert source.exists() == (keep_wave or not temporary_input)
+    assert cleaned.exists() == keep_wave
+    model.transcribe.assert_called_once_with(str(cleaned), beam_size=5, language=None)
