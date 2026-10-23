@@ -1,6 +1,6 @@
 # audio-transcriber
 
-Transcribe one audio or video file locally with [faster-whisper](https://github.com/SYSTRAN/faster-whisper). The pipeline checks the MIME type, converts the file to 16 kHz mono 16-bit WAV, splits audio longer than twenty minutes, optionally applies non-stationary noise reduction, and writes a timestamped Markdown transcript to `~/EchoBeak`.
+Transcribe one audio or video file locally with [faster-whisper](https://github.com/SYSTRAN/faster-whisper). The pipeline checks the MIME type, converts the file to 16 kHz mono 16-bit WAV, splits audio longer than twenty minutes, optionally applies non-stationary noise reduction, and writes a timestamped Markdown transcript to `~/EchoBeak-Transcription`.
 
 ## Pipeline
 
@@ -11,7 +11,7 @@ input path + transcript name
   → twenty-minute split when the audio is longer than 1200 seconds
   → optional noise reduction (--noise-reduce)
   → faster-whisper
-  → ~/EchoBeak/<name>.md
+  → ~/EchoBeak-Transcription/<name>.md
 ```
 
 1. **Input** — the command takes one audio or video path and a transcript file name.
@@ -19,9 +19,9 @@ input path + transcript name
 3. **Splitting** — audio longer than twenty minutes is cut into consecutive twenty-minute WAV parts. Timestamps in the transcript stay continuous across parts.
 4. **Noise reduction** — disabled by default. With `--noise-reduce`, each part is processed with non-stationary `noisereduce` and written to a temporary WAV.
 5. **Transcription** — Whisper runs with beam size 5. Use `--language es` to specify the audio language for every chunk. When omitted, the model detects the language (`language=None`). `transcribe_file()` also accepts a language code when called from Python. The model is loaded before conversion to validate explicit codes against `model.supported_languages`. Unsupported codes stop the run with status 1 and a message listing the supported codes, before conversion or noise reduction. Language rejections from the library are also reported without a traceback.
-6. **Publish** — segments are written to a temporary draft and copied to `~/EchoBeak` only after the whole file succeeds. Each segment is one line: `[start -> end] text`.
+6. **Publish** — segments are written to a temporary draft and copied to `~/EchoBeak-Transcription` only after the whole file succeeds. Each segment is one line: `[start -> end] text`.
 
-Each processed temporary WAV is deleted with `Path.unlink()`. Remaining temporary files are removed by `tempfile.TemporaryDirectory` when the run ends. The source file stays in place.
+By default, each processed temporary WAV is deleted with `Path.unlink()`, and remaining temporary files are removed when the run ends. With `--keep-wave`, generated WAVs (conversion, split parts, and optional noise reduction) are saved in `~/EchoBeak-Transcription` with unique names and kept even if transcription fails. Incomplete files from failed conversion or noise reduction are still removed. The temporary Markdown draft is always removed. The source file stays in place.
 
 ## Requirements
 
@@ -60,16 +60,23 @@ To enable noise reduction:
 uv run src/main.py ~/recordings/meeting.mp4 meeting --noise-reduce
 ```
 
+To keep generated WAV files:
+
+```bash
+uv run src/main.py ~/recordings/meeting.mp4 meeting --keep-wave
+```
+
 Arguments:
 
 | Argument | Meaning |
 |---|---|
 | `input_path` | Path to one audio or video file |
+| `--keep-wave` | Keep generated WAV files in `~/EchoBeak-Transcription` (deleted by default). Can be combined with `--noise-reduce`. |
 | `--noise-reduce` | Enable non-stationary noise reduction (disabled by default). |
 | `--language CODE` | Audio language code, such as `es` (Spanish) or `en` (English). Omit for automatic detection. This selects the transcription language; it does not translate the audio. |
 | `name` | Transcript file name. It must be a single file name: empty names, `.`, `..`, and names containing `/` or `\` are rejected. `meeting` and `meeting.md` are both saved as `meeting.md` |
 
-The transcript is saved as `~/EchoBeak/meeting.md`. The directory is created when needed. When that name is already taken, the new file is `meeting-(1).md`, then `meeting-(2).md`, and so on.
+The transcript is saved as `~/EchoBeak-Transcription/meeting.md`. The directory is created when needed. When that name is already taken, the new file is `meeting-(1).md`, then `meeting-(2).md`, and so on.
 
 Logs go to stderr. The Markdown file holds the transcript:
 
@@ -77,7 +84,7 @@ Logs go to stderr. The Markdown file holds the transcript:
 2026-10-20 10:00:00,000 [INFO] Loading model in CPU with INT8
 2026-10-20 10:00:01,000 [INFO] Model loaded successfully: small (cpu, int8)
 2026-10-20 10:00:01,100 [INFO] Transcribing: temp-3f2a1b9c-4d5e-6789-abcd-ef0123456789.wav
-2026-10-20 10:00:12,000 [INFO] Transcription saved to /home/user/EchoBeak/meeting.md
+2026-10-20 10:00:12,000 [INFO] Transcription saved to /home/user/EchoBeak-Transcription/meeting.md
 ```
 
 ```

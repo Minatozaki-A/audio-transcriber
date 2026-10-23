@@ -18,6 +18,7 @@ from utils.helpers import (
     build_audio_chunks,
     convert_to_wav_16_mono,
     create_name_trans_path,
+    get_output_directory,
     publish_transcript,
     validate_transcript_name,
 )
@@ -25,7 +26,7 @@ from utils.helpers import (
 
 def _transcript_lines(
     model: WhisperModel, chunks: list[AudioChunk], temp_dir: Path, language: str | None,
-    *, noise_reduce: bool = False,
+    *, noise_reduce: bool = False, keep_wave: bool = False,
 ) -> Iterator[str]:
     for chunk in chunks:
         audio_path = chunk.path
@@ -55,7 +56,7 @@ def _transcript_lines(
                 ) from error
         finally:
             for path in {chunk.path, audio_path}:
-                if path.resolve().is_relative_to(temp_dir.resolve()):
+                if not keep_wave and path.resolve().is_relative_to(temp_dir.resolve()):
                     try:
                         path.unlink(missing_ok=True)
                     except OSError:
@@ -64,7 +65,7 @@ def _transcript_lines(
 
 def transcribe_file(
     input_path: Path, output_path: Path, *, language: str | None = None,
-    noise_reduce: bool = False,
+    noise_reduce: bool = False, keep_wave: bool = False,
 ) -> Path:
     """Transcribe audio with global timestamps and publish only after success."""
     input_path = input_path.expanduser()
@@ -88,10 +89,16 @@ def transcribe_file(
 
         with tempfile.TemporaryDirectory() as directory:
             temp_dir = Path(directory)
-            paths = convert_to_wav_16_mono(input_path, temp_dir)
+            audio_dir = get_output_directory() if keep_wave else temp_dir
+            if keep_wave:
+                logging.info("Keeping generated WAV files in %s", audio_dir)
+            paths = convert_to_wav_16_mono(input_path, audio_dir, keep_wave=keep_wave)
             chunks = build_audio_chunks(paths)
             draft_path = temp_dir / "transcript.md"
-            lines = _transcript_lines(model, chunks, temp_dir, language, noise_reduce=noise_reduce)
+            lines = _transcript_lines(
+                model, chunks, audio_dir, language,
+                noise_reduce=noise_reduce, keep_wave=keep_wave,
+            )
             try:
                 with draft_path.open("w", encoding="utf-8") as output:
                     for line in lines:
@@ -116,6 +123,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Aplica reducción de ruido antes de transcribir (desactivada por defecto)",
     )
+    parser.add_argument(
+        "--keep-wave",
+        action="store_true",
+        help="Conserva los WAV generados en ~/EchoBeak-Transcription (se eliminan por defecto)",
+    )
     args = parser.parse_args(argv)
     if not args.input_path.expanduser().is_file():
         parser.error(f"No existe el archivo de entrada: {args.input_path}")
@@ -123,7 +135,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         validate_transcript_name(args.name)
         output_path = transcribe_file(
             args.input_path, create_name_trans_path(args.name), language=args.language,
-            noise_reduce=args.noise_reduce,
+            noise_reduce=args.noise_reduce, keep_wave=args.keep_wave,
         )
     except UnsupportedLanguageError as error:
         logging.error("%s", error)

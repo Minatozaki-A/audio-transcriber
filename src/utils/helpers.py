@@ -38,7 +38,7 @@ def _is_target_wav_format_stdlib(file_path: Path) -> bool:
                     and wf.getsampwidth() == 2 # 2 bytes = 16 bits = s16
             )
 
-    except (wave.Error, IOError) as e:
+    except (wave.Error, IOError, EOFError) as e:
         logging.error("Cannot read WAV header of %s: %s", file_path.name, e)
         return False
 
@@ -66,6 +66,11 @@ def validate_transcript_name(name: str) -> None:
         raise ValueError("Transcript name must be a file name, not a path")
 
 
+def get_output_directory() -> Path:
+    _ECHOBEAK_DIR.mkdir(parents=True, exist_ok=True)
+    return _ECHOBEAK_DIR
+
+
 def create_name_trans_path(name: str | None = None) -> Path:
     if name is None:
         new_name = f"trans-{date.today():%Y-%m-%d}.md"
@@ -73,8 +78,7 @@ def create_name_trans_path(name: str | None = None) -> Path:
         validate_transcript_name(name)
         new_name = f"{name.removesuffix('.md')}.md"
 
-    _ECHOBEAK_DIR.mkdir(parents=True, exist_ok=True)
-    final_name: Path = _ECHOBEAK_DIR / new_name
+    final_name: Path = get_output_directory() / new_name
 
     return _unique_path(final_name)
 
@@ -147,7 +151,9 @@ def _split_wav_20_minutes(audio_file: Path, output_file: Path) -> list[Path]:
     return sorted(output_file.parent.glob(f"{output_file.stem}-part-*.wav"))
 
 
-def convert_to_wav_16_mono(selected_audio_file: Path, temp_dir: Path | str) -> list[Path]:
+def convert_to_wav_16_mono(
+    selected_audio_file: Path, temp_dir: Path | str, *, keep_wave: bool = False,
+) -> list[Path]:
     """Return a target WAV directly, or convert and split longer audio."""
     try:
         mime: str = magic.from_file(selected_audio_file, mime=True)
@@ -177,7 +183,8 @@ def convert_to_wav_16_mono(selected_audio_file: Path, temp_dir: Path | str) -> l
         parts = _split_wav_20_minutes(audio_file, output_file)
         if not parts:
             raise OSError("ffmpeg did not create any audio segments")
-        output_file.unlink(missing_ok=True)
+        if not keep_wave:
+            output_file.unlink(missing_ok=True)
         return parts
     except (AudioConversionError, OSError, wave.Error, EOFError) as error:
         try:

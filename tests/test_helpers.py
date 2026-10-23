@@ -47,6 +47,29 @@ def test_non_target_audio_is_converted(tmp_path, make_wav, monkeypatch):
     assert source.read_bytes() == b"original"
 
 
+@pytest.mark.parametrize("keep_wave", [False, True])
+def test_converted_wav_retention_after_splitting(tmp_path, make_wav, monkeypatch, keep_wave):
+    source = tmp_path / "source.mp3"
+    source.write_bytes(b"original")
+    temporary = tmp_path / "temporary"
+    temporary.mkdir()
+    converted = temporary / "converted.wav"
+    monkeypatch.setattr(helpers.magic, "from_file", lambda *a, **k: "audio/mpeg")
+    monkeypatch.setattr(helpers, "create_temp_audio_path", lambda directory: converted)
+    monkeypatch.setattr(helpers, "run_ffmpeg", lambda command: make_wav(converted, 1201))
+    parts = [temporary / "part-000.wav", temporary / "part-001.wav"]
+
+    def split(audio, output):
+        assert audio == converted
+        return [make_wav(part) for part in parts]
+
+    monkeypatch.setattr(helpers, "_split_wav_20_minutes", split)
+    assert helpers.convert_to_wav_16_mono(source, temporary, keep_wave=keep_wave) == parts
+    assert converted.exists() == keep_wave
+    assert all(part.is_file() for part in parts)
+    assert source.read_bytes() == b"original"
+
+
 def test_split_error_removes_generated_parts_preserves_source(tmp_path, make_wav, monkeypatch):
     source = make_wav(tmp_path / "source.wav", 1201)
     temporary = tmp_path / "temporary"

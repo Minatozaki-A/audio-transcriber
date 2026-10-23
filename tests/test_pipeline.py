@@ -6,13 +6,14 @@ import pytest
 
 import main as pipeline
 from errors import NoiseReductionError, TranscriptionError
+from utils import helpers
 
 
 def test_pipeline_accumulates_timestamps_and_preserves_text(tmp_path, make_wav, monkeypatch):
     source = make_wav(tmp_path / "source.wav")
     temporary_paths = []
 
-    def convert(path, directory):
+    def convert(path, directory, *, keep_wave=False):
         temporary_paths.append(directory)
         return [make_wav(directory / "a.wav", 2.25), make_wav(directory / "b.wav", 1)]
 
@@ -45,14 +46,17 @@ def test_pipeline_accumulates_timestamps_and_preserves_text(tmp_path, make_wav, 
 
 
 @pytest.mark.parametrize("stage", ["load", "call", "iterate", "clean"])
-def test_pipeline_failures_preserve_cause_and_cleanup(tmp_path, make_wav, monkeypatch, stage):
+@pytest.mark.parametrize("keep_wave", [False, True])
+def test_pipeline_failures_preserve_cause_and_cleanup(
+    tmp_path, make_wav, monkeypatch, stage, keep_wave
+):
     source = make_wav(tmp_path / "source.wav")
     output = tmp_path / "result.md"
     output.write_text("existing", encoding="utf-8")
     temporary_paths = []
     failure = NoiseReductionError("noise failed") if stage == "clean" else RuntimeError("model failed")
 
-    def convert(path, directory):
+    def convert(path, directory, *, keep_wave=False):
         temporary_paths.append(directory)
         return [make_wav(directory / "part.wav")]
 
@@ -82,14 +86,20 @@ def test_pipeline_failures_preserve_cause_and_cleanup(tmp_path, make_wav, monkey
     monkeypatch.setattr(pipeline, "convert_to_wav_16_mono", convert)
     monkeypatch.setattr(pipeline, "reduce_noise", clean)
     monkeypatch.setattr(pipeline, "load_whisper_model", load_model)
+    saved_audio = tmp_path / "EchoBeak-Transcription"
+    monkeypatch.setattr(helpers, "_ECHOBEAK_DIR", saved_audio)
     expected = NoiseReductionError if stage == "clean" else TranscriptionError
     with pytest.raises(expected) as caught:
-        pipeline.transcribe_file(source, output, noise_reduce=True)
+        pipeline.transcribe_file(source, output, noise_reduce=True, keep_wave=keep_wave)
     assert (caught.value is failure) if stage == "clean" else (caught.value.__cause__ is failure)
     assert source.is_file()
     assert output.read_text(encoding="utf-8") == "existing"
     assert not (tmp_path / "result-(1).md").exists()
-    assert all(not directory.exists() for directory in temporary_paths)
+    assert all(directory.exists() == keep_wave for directory in temporary_paths)
+    if keep_wave and stage != "load":
+        assert temporary_paths == [saved_audio]
+        assert (saved_audio / "part.wav").is_file()
+        assert not (saved_audio / "transcript.md").exists()
     assert closed == ([] if stage == "load" else [True])
 
 
@@ -109,7 +119,9 @@ def test_cli_passes_language_to_pipeline(tmp_path, make_wav, monkeypatch, option
     monkeypatch.setattr(pipeline, "transcribe_file", transcribe)
 
     assert pipeline.main([str(source), "result", *options]) == 0
-    transcribe.assert_called_once_with(source, output, language=language, noise_reduce=False)
+    transcribe.assert_called_once_with(
+        source, output, language=language, noise_reduce=False, keep_wave=False
+    )
 
 
 def test_draft_write_failure_closes_model_and_keeps_io_error(tmp_path, make_wav, monkeypatch):
@@ -143,7 +155,7 @@ def test_draft_write_failure_closes_model_and_keeps_io_error(tmp_path, make_wav,
         finally:
             closed.append(True)
 
-    monkeypatch.setattr(pipeline, "convert_to_wav_16_mono", lambda *args: [source])
+    monkeypatch.setattr(pipeline, "convert_to_wav_16_mono", lambda *args, **kwargs: [source])
     monkeypatch.setattr(pipeline, "reduce_noise", lambda path, directory: path)
     monkeypatch.setattr(pipeline, "load_whisper_model", load_model)
     monkeypatch.setattr(Path, "open", open_file)
@@ -156,14 +168,15 @@ def test_draft_write_failure_closes_model_and_keeps_io_error(tmp_path, make_wav,
 
 
 @pytest.mark.parametrize("noise_reduce", [False, True])
-def test_processed_chunks_are_removed_before_next_chunk(
-    tmp_path, make_wav, monkeypatch, noise_reduce
+@pytest.mark.parametrize("keep_wave", [False, True])
+def test_processed_chunks_follow_retention_option(
+    tmp_path, make_wav, monkeypatch, noise_reduce, keep_wave
 ):
     source = make_wav(tmp_path / "source.wav")
     paths = []
     cleaned = []
 
-    def convert(path, directory):
+    def convert(path, directory, *, keep_wave=False):
         paths.extend([make_wav(directory / "a.wav"), make_wav(directory / "b.wav")])
         return paths
 
@@ -178,9 +191,9 @@ def test_processed_chunks_are_removed_before_next_chunk(
     def transcribe(path, **kwargs):
         nonlocal calls
         if calls:
-            assert not paths[0].exists()
+            assert paths[0].exists() == keep_wave
             if noise_reduce:
-                assert not cleaned[0].exists()
+                assert cleaned[0].exists() == keep_wave
         expected = cleaned[calls] if noise_reduce else paths[calls]
         assert path == str(expected)
         assert expected.is_file()
@@ -196,24 +209,73 @@ def test_processed_chunks_are_removed_before_next_chunk(
     @contextmanager
     def load_model():
         yield SimpleNamespace(transcribe=transcribe)
-        assert all(not path.exists() for path in paths + cleaned)
+        assert all(path.exists() == keep_wave for path in paths + cleaned)
 
     monkeypatch.setattr(pipeline, "convert_to_wav_16_mono", convert)
     monkeypatch.setattr(pipeline, "reduce_noise", cleaner)
     monkeypatch.setattr(pipeline, "load_whisper_model", load_model)
-    pipeline.transcribe_file(source, tmp_path / "out.md", noise_reduce=noise_reduce)
+    saved_audio = tmp_path / "EchoBeak-Transcription"
+    monkeypatch.setattr(helpers, "_ECHOBEAK_DIR", saved_audio)
+    pipeline.transcribe_file(
+        source, tmp_path / "out.md", noise_reduce=noise_reduce, keep_wave=keep_wave
+    )
     assert cleaner.call_count == (2 if noise_reduce else 0)
     assert source.is_file()
+    if keep_wave:
+        assert all(path.parent == saved_audio for path in paths + cleaned)
+        assert set(saved_audio.iterdir()) == set(paths + cleaned)
+    else:
+        assert not saved_audio.exists()
 
 
-def test_cli_enables_noise_reduction(tmp_path, make_wav, monkeypatch):
+@pytest.mark.parametrize("keep_wave", [False, True])
+def test_target_source_stays_in_place_with_audio_retention(
+    tmp_path, make_wav, monkeypatch, keep_wave
+):
+    source = make_wav(tmp_path / "source.wav")
+    original = source.read_bytes()
+    saved_audio = tmp_path / "EchoBeak-Transcription"
+    monkeypatch.setattr(helpers, "_ECHOBEAK_DIR", saved_audio)
+    cleaned = []
+
+    def clean(path, directory):
+        assert path == source
+        cleaned.append(make_wav(directory / "cleaned.wav"))
+        return cleaned[-1]
+
+    model = Mock()
+    model.transcribe.return_value = (
+        iter([SimpleNamespace(start=0, end=1, text="text")]), None
+    )
+
+    @contextmanager
+    def load_model():
+        yield model
+
+    monkeypatch.setattr(pipeline, "load_whisper_model", load_model)
+    monkeypatch.setattr(pipeline, "reduce_noise", clean)
+    pipeline.transcribe_file(
+        source, tmp_path / "out.md", noise_reduce=True, keep_wave=keep_wave
+    )
+    assert source.read_bytes() == original
+    assert cleaned[0].exists() == keep_wave
+    if keep_wave:
+        assert list(saved_audio.iterdir()) == cleaned
+
+
+@pytest.mark.parametrize("noise_reduce", [False, True])
+@pytest.mark.parametrize("keep_wave", [False, True])
+def test_cli_passes_audio_options(tmp_path, make_wav, monkeypatch, noise_reduce, keep_wave):
     source = make_wav(tmp_path / "source.wav")
     output = tmp_path / "out.md"
     transcribe = Mock(return_value=output)
     monkeypatch.setattr(pipeline, "create_name_trans_path", lambda name: output)
     monkeypatch.setattr(pipeline, "transcribe_file", transcribe)
-    assert pipeline.main([str(source), "out", "--noise-reduce"]) == 0
-    transcribe.assert_called_once_with(source, output, language=None, noise_reduce=True)
+    options = (["--noise-reduce"] if noise_reduce else []) + (["--keep-wave"] if keep_wave else [])
+    assert pipeline.main([str(source), "out", *options]) == 0
+    transcribe.assert_called_once_with(
+        source, output, language=None, noise_reduce=noise_reduce, keep_wave=keep_wave
+    )
 
 
 @pytest.mark.parametrize("language,supported", [("jap", ["ja", "en"]), ("es", ["en"])])
@@ -261,7 +323,7 @@ def test_library_language_rejection_is_reported_and_cleaned(
     temporary = []
     closed = []
 
-    def convert(path, directory):
+    def convert(path, directory, *, keep_wave=False):
         temporary.append(directory)
         return [make_wav(directory / "part.wav")]
 
