@@ -24,7 +24,7 @@ wheels = [
 ]
 
 [[package]]
-name = "audio-transcriber"
+name = "echobeak"
 version = "1.13.0"
 source = { virtual = "." }
 dependencies = [
